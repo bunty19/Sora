@@ -1,38 +1,25 @@
-import { Badge, Container } from '@nextui-org/react';
-import type { MetaFunction } from '@remix-run/node';
-import { NavLink, Outlet } from '@remix-run/react';
+import { Outlet } from '@remix-run/react';
+import { mergeMeta } from '~/utils';
 
+import type { Handle } from '~/types/handle';
 import { moviePages } from '~/constants/tabLinks';
+import { BreadcrumbItem } from '~/components/elements/Breadcrumb';
 
-export const meta: MetaFunction = () => ({
-  title: 'Free Movies HD - Watch Movies and Tv Series HD Online on Sora',
-  description: 'Watch latest movies online in HD Quality. Unlimited streaming movies for free now',
-  keywords:
-    'watch free movies, free movies to watch online, watch movies online free, free movies streaming, free movies full, free movies download, watch movies hd, movies to watch, hd movies, stream movies, movies to stream, watch movies free',
-  'og:url': 'https://sora-anime.vercel.app/movies',
-  'og:title': 'Free Movies HD - Watch Movies and Tv Series HD Online on Sora',
-  'og:image': 'https://sora-anime.vercel.app/api/ogimage?it=movies',
-  'og:description':
-    'Watch latest movies online in HD Quality. Unlimited streaming movies for free now',
-});
+export const meta = mergeMeta(() => [
+  {
+    name: 'keywords',
+    content:
+      'watch free movies, free movies to watch online, watch movies online free, free movies streaming, free movies full, free movies download, watch movies hd, movies to watch, hd movies, stream movies, movies to stream, watch movies free',
+  },
+  { property: 'og:image', content: 'https://sorachill.vercel.app/api/ogimage?it=movies' },
+  { name: 'twitter:image', content: 'https://sorachill.vercel.app/api/ogimage?it=movies' },
+]);
 
-export const handle = {
-  breadcrumb: () => (
-    <NavLink to="/movies" aria-label="Movies Page">
-      {({ isActive }) => (
-        <Badge
-          color="primary"
-          variant="flat"
-          css={{
-            opacity: isActive ? 1 : 0.7,
-            transition: 'opacity 0.25s ease 0s',
-            '&:hover': { opacity: 0.8 },
-          }}
-        >
-          Movies
-        </Badge>
-      )}
-    </NavLink>
+export const handle: Handle = {
+  breadcrumb: ({ t }) => (
+    <BreadcrumbItem to="/movies" key="movies">
+      {t('movies')}
+    </BreadcrumbItem>
   ),
   showTabLink: true,
   tabLinkPages: moviePages,
@@ -44,10 +31,6 @@ export const handle = {
   },
 };
 
-const MoviePage = () => (
-  <Container fluid responsive={false} css={{ m: 0, p: 0 }}>
-    <Outlet />
-  </Container>
-);
+const MoviePage = () => <Outlet />;
 
 export default MoviePage;

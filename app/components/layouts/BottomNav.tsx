@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { NavLink, useLocation, useSearchParams } from '@remix-run/react';
 import type { User } from '@supabase/supabase-js';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { tv } from 'tailwind-variants';
 
-import { useLayoutScrollPosition } from '~/store/layout/useLayoutScrollPosition';
+import { useLayout } from '~/store/layout/useLayout';
 import { Sheet, SheetContent, SheetTrigger } from '~/components/elements/Sheet';
 import Category from '~/assets/icons/CategoryIcon';
 import Discover from '~/assets/icons/DiscoverIcon';
@@ -22,12 +23,13 @@ interface IBottomNavProps {
 
 const BottomNav = (props: IBottomNavProps) => {
   const { user } = props;
+  const { t } = useTranslation();
   const [openMore, setOpenMore] = useState(false);
   const location = useLocation();
   const [search] = useSearchParams();
-  const scrollDirection = useLayoutScrollPosition((state) => state.scrollDirection);
+  const scrollDirection = useLayout((state) => state.scrollDirection);
   const bottomNavItemStyles = tv({
-    base: 'text-text flex flex-col items-center justify-center gap-y-2 rounded-md bg-transparent text-xs font-medium',
+    base: 'flex flex-col items-center justify-center gap-y-2 rounded-small bg-transparent text-xs font-medium text-foreground',
     variants: {
       active: {
         true: 'text-primary',
@@ -41,32 +43,32 @@ const BottomNav = (props: IBottomNavProps) => {
 
   const moreNavItems = [
     {
-      name: 'Collections',
+      name: 'lists',
       icon: Category,
-      path: '/collections',
+      path: '/lists',
     },
     {
-      name: 'History',
+      name: 'watch-history',
       icon: History,
       path: '/watch-history',
     },
     ...(user
       ? [
           {
-            name: 'Logout',
+            name: 'logout',
             icon: LogOut,
             path: `/sign-out?ref=${ref}`,
           },
         ]
       : [
           {
-            name: 'Login',
+            name: 'login',
             icon: LogIn,
             path: `/sign-in?ref=${ref}`,
           },
         ]),
     {
-      name: 'Settings',
+      name: 'settings',
       icon: Settings,
       path: '/settings',
     },
@@ -77,7 +79,7 @@ const BottomNav = (props: IBottomNavProps) => {
       initial={{ y: 0 }}
       animate={{ y: scrollDirection === 'down' ? 65 : 0 }}
       transition={{ duration: 0.5 }}
-      className="fixed bottom-0 z-[1000] flex h-16 w-full flex-row flex-nowrap items-center justify-around border-t border-border bg-background-alpha py-2 drop-shadow-md backdrop-blur-md sm:hidden"
+      className="fixed bottom-0 z-[4000] flex h-16 w-full flex-row flex-nowrap items-center justify-around border-t border-divider bg-background/[0.6] py-2 drop-shadow-md backdrop-blur-2xl backdrop-contrast-125 backdrop-saturate-200 sm:hidden"
     >
       <NavLink
         to="/"
@@ -90,7 +92,7 @@ const BottomNav = (props: IBottomNavProps) => {
         {({ isActive }) => (
           <>
             <Home filled={isActive} />
-            Home
+            {t('home')}
           </>
         )}
       </NavLink>
@@ -105,7 +107,7 @@ const BottomNav = (props: IBottomNavProps) => {
         {({ isActive }) => (
           <>
             <Discover filled={isActive} />
-            Discover
+            {t('discover')}
           </>
         )}
       </NavLink>
@@ -113,17 +115,18 @@ const BottomNav = (props: IBottomNavProps) => {
         <SheetTrigger asChild>
           <button type="button" className={bottomNavItemStyles()}>
             <Menu />
-            More
+            {t('more')}
           </button>
         </SheetTrigger>
         <SheetContent
           side="bottom"
+          size="content"
           hideCloseButton
           swipeDownToClose
           open={openMore}
           onOpenChange={() => setOpenMore(!openMore)}
         >
-          <div className="my-4 grid grid-cols-3 justify-center gap-x-3 gap-y-5 p-2 xs:grid-cols-4">
+          <div className="my-4 grid grid-cols-3 items-center justify-center gap-x-3 gap-y-5 p-2 xs:grid-cols-4">
             {moreNavItems.map((item) => (
               <NavLink
                 key={item.name}
@@ -138,7 +141,7 @@ const BottomNav = (props: IBottomNavProps) => {
                 {({ isActive }) => (
                   <>
                     <item.icon filled={isActive} />
-                    {item.name}
+                    {t(item.name)}
                   </>
                 )}
               </NavLink>

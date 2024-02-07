@@ -1,29 +1,21 @@
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-restricted-syntax */
-
 import { resolve } from 'node:path';
-import { getCssText } from '@nextui-org/react';
-import type { EntryContext } from '@remix-run/node';
 import { RemixServer } from '@remix-run/react';
+import { handleRequest as handleVercelRequest, type EntryContext } from '@vercel/remix';
 import { createInstance } from 'i18next';
 import Backend from 'i18next-fs-backend';
 import isbot from 'isbot';
-import { renderToString } from 'react-dom/server';
 import { I18nextProvider, initReactI18next } from 'react-i18next';
-import { etag } from 'remix-etag';
 
-import { otherRootRouteHandlers } from '~/services/other-root-routes.server';
 import { IsBotProvider } from '~/context/isbot.context';
 
-import i18n from './i18n/i18n.config';
-import i18next from './i18n/i18next.server';
+import { i18n, i18next } from './services/i18n';
 
-export default async function handleRequest(
+const handleRequest = async (
   request: Request,
   responseStatusCode: number,
   responseHeaders: Headers,
   remixContext: EntryContext,
-) {
+) => {
   // First, we create a new instance of i18next so every request will have a
   // completely unique instance and not share any state
   const instance = createInstance();
@@ -45,39 +37,31 @@ export default async function handleRequest(
       },
     });
 
-  // Then you can render your app wrapped in the I18nextProvider as in the
-  // entry.client file
-
-  for (const handler of otherRootRouteHandlers) {
-    const otherRouteResponse = await handler(request, remixContext);
-    if (otherRouteResponse) return otherRouteResponse;
-  }
-
-  isbot.exclude([
+  const isbotRender = isbot.spawn();
+  isbotRender.exclude([
     'Checkly',
     'Checkly, https://www.checklyhq.com',
     'Checkly/1.0 (https://www.checklyhq.com)',
+    'googlebot',
+    'googlebot/2.1 (+http://www.google.com/bot.html)',
+    'bingbot',
+    'bingbot/2.0 (+http://www.bing.com/bingbot.htm)',
+    'discordbot',
+    'Discordbot/2.0',
+    'twitterbot',
+    'Twitterbot/1.0',
+    'vercel',
+    'Vercel/1.0 (https://vercel.com/docs/bots)',
   ]);
-
-  let markup = renderToString(
-    <IsBotProvider isBot={isbot(request.headers.get('User-Agent') ?? '')}>
+  isbotRender.extend(['chrome-lighthouse']);
+  const remixServer = (
+    <IsBotProvider isBot={isbotRender(request.headers.get('User-Agent') ?? '')}>
       <I18nextProvider i18n={instance}>
         <RemixServer context={remixContext} url={request.url} />
       </I18nextProvider>
-    </IsBotProvider>,
+    </IsBotProvider>
   );
+  return handleVercelRequest(request, responseStatusCode, responseHeaders, remixServer);
+};
 
-  markup = markup.replace(
-    /<style id="stitches">.*<\/style>/g,
-    `<style id="stitches">${getCssText()}</style>`,
-  );
-
-  responseHeaders.set('Content-Type', 'text/html');
-
-  const response = new Response(`<!DOCTYPE html>${markup}`, {
-    status: responseStatusCode,
-    headers: responseHeaders,
-  });
-
-  return etag({ request, response });
-}
+export default handleRequest;

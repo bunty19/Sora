@@ -1,38 +1,49 @@
-/* eslint-disable no-unsafe-optional-chaining */
-/* eslint-disable @typescript-eslint/indent */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-import { useEffect, useState } from 'react';
-import { Avatar, Badge, Button, Card, Spacer, Tooltip } from '@nextui-org/react';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { Button } from '@nextui-org/button';
+import { Card, CardBody } from '@nextui-org/card';
+import { Chip } from '@nextui-org/chip';
+import { Spacer } from '@nextui-org/spacer';
+import { Tooltip } from '@nextui-org/tooltip';
 import { useMeasure, useMediaQuery } from '@react-hookz/web';
+import { clipboardSupported, copyTextToClipboard, shareData } from '@remix-pwa/client';
 import { useFetcher, useLocation, useNavigate } from '@remix-run/react';
-import Image, { MimeType } from 'remix-image';
-// import { useTranslation } from 'react-i18next';
+import { shareSupported } from '~/utils';
+import { motion, useTransform } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
+import { MimeType } from 'remix-image';
+import { toast } from 'sonner';
 import { tv } from 'tailwind-variants';
 import tinycolor from 'tinycolor2';
-import type { ColorPalette } from '~/routes/api/color-palette';
 
+import type { ColorPalette } from '~/routes/api+/color-palette';
 import type { IAnimeInfo } from '~/services/consumet/anilist/anilist.types';
-import type { IMovieDetail, IMovieTranslations, ITvShowDetail } from '~/services/tmdb/tmdb.types';
-import { WebShareLink } from '~/utils/client/pwa-utils.client';
+import type {
+  IMovieDetail,
+  IMovieTranslations,
+  ITvShowDetail,
+  IVideos,
+} from '~/services/tmdb/tmdb.types';
 import TMDB from '~/utils/media';
-import { useLayoutScrollPosition } from '~/store/layout/useLayoutScrollPosition';
-import useColorDarkenLighten from '~/hooks/useColorDarkenLighten';
-import { useSoraSettings } from '~/hooks/useLocalStorage';
-import SelectProviderModal from '~/components/elements/modal/SelectProviderModal';
+import useColorDarkenLighten from '~/utils/react/hooks/useColorDarkenLighten';
+import { useHydrated } from '~/utils/react/hooks/useHydrated';
+import { useSoraSettings } from '~/utils/react/hooks/useLocalStorage';
+import { useLayout } from '~/store/layout/useLayout';
+import { Dialog, DialogContent, DialogTrigger } from '~/components/elements/Dialog';
+import SelectProvider from '~/components/elements/dialog/SelectProviderDialog';
+import WatchTrailer, { type Trailer } from '~/components/elements/dialog/WatchTrailerDialog';
+import Image from '~/components/elements/Image';
 import Rating from '~/components/elements/shared/Rating';
-import { H2, H5, H6 } from '~/components/styles/Text.styles';
+import { backgroundStyles } from '~/components/styles/primitives';
 import PhotoIcon from '~/assets/icons/PhotoIcon';
 import ShareIcon from '~/assets/icons/ShareIcon';
-
-import { BackgroundContent } from './Media.styles';
 
 interface IMediaDetail {
   type: 'movie' | 'tv';
   item: IMovieDetail | ITvShowDetail | undefined;
-  handler?: (id: number) => void;
   translations?: IMovieTranslations | undefined;
   imdbRating: { count: number; star: number } | undefined;
   color: string | undefined;
+  trailerTime?: number;
 }
 
 interface IMediaBackground {
@@ -42,7 +53,7 @@ interface IMediaBackground {
 
 interface IAnimeDetail {
   item: IAnimeInfo | undefined;
-  handler?: (id: number) => void;
+  trailerTime?: number;
 }
 
 const backgroundImageStyles = tv({
@@ -70,21 +81,22 @@ const backgroundImageStyles = tv({
 });
 
 export const MediaDetail = (props: IMediaDetail) => {
-  // const { t } = useTranslation();
-  const { type, item, handler, imdbRating, color } = props;
+  const { type, item, imdbRating, color, trailerTime } = props;
   const [size, ref] = useMeasure<HTMLDivElement>();
   const [imageSize, imageRef] = useMeasure<HTMLDivElement>();
   const navigate = useNavigate();
   const location = useLocation();
+  const isHydrated = useHydrated();
   const fetcher = useFetcher();
+  const { t } = useTranslation();
   const { backgroundColor } = useColorDarkenLighten(color);
   const isSm = useMediaQuery('(max-width: 650px)', { initializeWithValue: false });
   const isXl = useMediaQuery('(max-width: 1280px)', { initializeWithValue: false });
-  const [visible, setVisible] = useState(false);
+  const [showProvidereDialog, setShowProvidereDialog] = useState(false);
+  const [showTrailerDialog, setShowTrailerDialog] = useState(false);
+  const [trailer, setTrailer] = useState<Trailer>({});
   const [colorPalette, setColorPalette] = useState<ColorPalette>();
-  const closeHandler = () => {
-    setVisible(false);
-  };
+
   const { id, tagline, genres, status } = item || {};
   const title = (item as IMovieDetail)?.title || (item as ITvShowDetail)?.name || '';
   const titleEng = (item as IMovieDetail)?.titleEng || (item as ITvShowDetail)?.nameEng || '';
@@ -122,78 +134,75 @@ export const MediaDetail = (props: IMediaDetail) => {
   }, [color]);
 
   useEffect(() => {
-    if (fetcher.data && fetcher.data.color) {
-      setColorPalette(fetcher.data.color);
+    if (fetcher.data && (fetcher.data as { color: ColorPalette }).color) {
+      setColorPalette((fetcher.data as { color: ColorPalette }).color);
+    }
+    if (fetcher.data && (fetcher.data as { videos: IVideos }).videos) {
+      const { results } = (fetcher.data as { videos: IVideos }).videos;
+      const officialTrailer = results.find((result: Trailer) => result.type === 'Trailer');
+      setTrailer(officialTrailer || {});
     }
   }, [fetcher.data]);
+
+  const handleShowTrailerDialog = (value: boolean) => {
+    setShowTrailerDialog(value);
+    if (value === true) {
+      fetcher.load(`/${type === 'movie' ? 'movies' : 'tv-shows'}/${id}/videos`);
+    }
+  };
+
+  const handleShare = async () => {
+    const isShareSupported = await shareSupported();
+    if (isShareSupported) {
+      await shareData({
+        title,
+        text: description,
+        url: window.location.href,
+      });
+    } else {
+      const isClipboardSupported = await clipboardSupported();
+      if (isClipboardSupported) {
+        copyTextToClipboard(window.location.href);
+        toast.success('Link copied to clipboard');
+      } else {
+        toast.error('Browser not supported');
+      }
+    }
+  };
 
   return (
     <>
       <Card
-        variant="flat"
-        css={{
-          display: 'flex',
-          flexFlow: 'column',
-          width: '100%',
-          borderWidth: 0,
-          backgroundColor: 'transparent',
-          borderBottomLeftRadius: 0,
-          borderBottomRightRadius: 0,
-          borderTopRightRadius: 0,
-          height: `calc(${size?.height}px)`,
-          backgroundImage: `linear-gradient(to bottom, transparent 80px, ${backgroundColor} 80px)`,
-          '@xs': {
-            backgroundImage: `linear-gradient(to bottom, transparent 200px, ${backgroundColor} 200px)`,
-          },
+        radius="none"
+        style={
+          {
+            height: `calc(${size?.height}px)`,
+            '--theme-movie-brand': isHydrated ? backgroundColor : 'transparent',
+          } as CSSProperties
+        }
+        classNames={{
+          base: 'flex flex-col w-full !bg-transparent bg-gradient-to-b !from-transparent from-[80px] !to-movie-brand-color border-0 to-[80px] sm:from-[200px] sm:to-[200px] shadow-none',
         }}
       >
-        <Card.Body
+        <CardBody
+          // @ts-ignore
           ref={ref}
-          css={{
-            position: 'absolute',
-            zIndex: 1,
-            bottom: 0,
-            display: 'flex',
-            flexGrow: 1,
-            justifyContent: 'center',
-            flexDirection: 'column',
-            padding: 0,
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
-          }}
+          className="z-1 absolute bottom-0 flex grow flex-col items-center justify-center p-0"
         >
-          <BackgroundContent />
+          <div className={backgroundStyles({ content: true })} />
           <div className="grid w-full max-w-[1920px] grid-cols-[1fr_2fr] grid-rows-[1fr_auto_auto] items-stretch justify-center gap-x-4 gap-y-6 px-3 pt-5 grid-areas-small sm:grid-rows-[auto_1fr_auto] sm:px-3.5 sm:grid-areas-wide xl:px-4 2xl:px-5">
-            <div className="flex flex-col grid-in-image" ref={imageRef}>
+            <div className="flex flex-col items-center justify-center grid-in-image" ref={imageRef}>
               {posterPath ? (
-                <Card.Image
-                  // @ts-ignore
-                  as={Image}
+                <Image
                   src={posterPath}
                   alt={title}
-                  objectFit="cover"
-                  css={{
-                    minWidth: 'auto !important',
-                    minHeight: 'auto !important',
-                    borderRadius: '$sm',
-                    boxShadow: '12px 12px 30px 10px rgb(104 112 118 / 0.35)',
-                    aspectRatio: '2 / 3',
-                    '@sm': {
-                      borderRadius: '$md',
-                    },
+                  radius="lg"
+                  shadow="sm"
+                  classNames={{
+                    wrapper: 'w-full sm:w-3/4 xl:w-1/2',
+                    img: 'aspect-[2/3] !min-h-[auto] !min-w-[auto]',
                   }}
-                  containerCss={{
-                    overflow: 'visible',
-                    width: '100% !important',
-                    '@xs': {
-                      width: '75% !important',
-                    },
-                    '@md': {
-                      width: '50% !important',
-                    },
-                  }}
-                  showSkeleton
-                  loaderUrl="/api/image"
+                  disableSkeleton={false}
                   placeholder="empty"
                   responsive={[
                     {
@@ -216,42 +225,25 @@ export const MediaDetail = (props: IMediaDetail) => {
                   }}
                 />
               ) : (
-                <div className="flex items-center justify-center">
-                  <Avatar
-                    icon={<PhotoIcon width={48} height={48} />}
-                    css={{
-                      width: '100% !important',
-                      height: 'auto !important',
-                      size: '$20',
-                      borderRadius: '$sm',
-                      aspectRatio: '2 / 3',
-                      '@xs': { width: '75% !important' },
-                      '@sm': { borderRadius: '$md' },
-                      '@md': { width: '50% !important' },
-                    }}
-                  />
+                <div className="z-0 flex aspect-[2/3] h-auto w-full items-center justify-center rounded-large bg-default sm:w-3/4 xl:w-1/2">
+                  <PhotoIcon width={36} height={36} />
                 </div>
               )}
-              {isSm ? null : <Spacer y={2} />}
+              {isSm ? null : <Spacer y={10} />}
             </div>
             <div className="flex w-full flex-col items-start justify-start grid-in-title">
-              <H2 h1 weight="bold" css={{ '@xsMax': { fontSize: '1.75rem !important' } }}>
+              <h1 className="!text-3xl md:!text-4xl">
                 {`${title}${isSm ? '' : ` (${releaseYear})`}`}
-              </H2>
-              {tagline ? (
-                <H5 h5 css={{ fontStyle: 'italic' }}>
-                  {tagline}
-                </H5>
-              ) : null}
+              </h1>
+              {tagline ? <p className="italic">{tagline}</p> : null}
             </div>
             <div className="flex flex-col gap-y-3 grid-in-info sm:gap-y-6">
               <div className="flex flex-row flex-wrap gap-3">
-                <Badge
-                  size={isSm ? 'sm' : 'md'}
-                  color="primary"
+                <Chip
+                  size="lg"
+                  radius="full"
                   variant="flat"
-                  className="transition-all duration-200 ease-in-out"
-                  css={
+                  style={
                     colorPalette
                       ? {
                           backgroundColor: colorPalette[200],
@@ -259,6 +251,10 @@ export const MediaDetail = (props: IMediaDetail) => {
                         }
                       : { borderColor: '$primaryLightActive' }
                   }
+                  classNames={{
+                    base: 'duration-200 ease-in-out transition-all',
+                    content: 'flex flex-row items-center gap-x-2',
+                  }}
                 >
                   <Rating
                     rating={item?.vote_average?.toFixed(1)}
@@ -267,34 +263,19 @@ export const MediaDetail = (props: IMediaDetail) => {
                   />
                   {imdbRating ? (
                     <div className="ml-3 flex flex-row items-center gap-x-2">
-                      <H6
-                        h6
-                        weight="semibold"
-                        css={{
-                          backgroundColor: '#ddb600',
-                          color: '#000',
-                          borderRadius: '$xs',
-                          padding: '0 0.25rem 0 0.25rem',
-                        }}
-                      >
-                        IMDb
-                      </H6>
-                      <H6
-                        h6
-                        weight="semibold"
-                        css={colorPalette ? { color: colorPalette[600] } : {}}
-                      >
+                      <h6 className="rounded-large bg-[#ddb600] px-1 text-black">IMDb</h6>
+                      <h6 style={colorPalette ? { color: colorPalette[600] } : {}}>
                         {imdbRating?.star}
-                      </H6>
+                      </h6>
                     </div>
                   ) : null}
-                </Badge>
-                <Badge
-                  size={isSm ? 'sm' : 'md'}
-                  color="primary"
+                </Chip>
+                <Chip
+                  size="lg"
+                  radius="full"
                   variant="flat"
                   className="flex flex-row transition-all duration-200 ease-in-out"
-                  css={
+                  style={
                     colorPalette
                       ? {
                           backgroundColor: colorPalette[200],
@@ -303,32 +284,27 @@ export const MediaDetail = (props: IMediaDetail) => {
                       : { borderColor: '$primaryLightActive' }
                   }
                 >
-                  <H6 h6 weight="semibold" css={colorPalette ? { color: colorPalette[600] } : {}}>
+                  <h6 style={colorPalette ? { color: colorPalette[600] } : {}}>
                     {releaseDate}
                     {runtime ? ` • ${Math.floor(runtime / 60)}h ${runtime % 60}m` : null}
-                  </H6>
-                </Badge>
+                  </h6>
+                </Chip>
               </div>
               <div className="flex w-full flex-row flex-wrap items-center justify-start gap-3">
                 {genres &&
                   genres?.map((genre) => (
                     <Button
                       type="button"
-                      color="primary"
-                      flat
-                      auto
-                      // shadow
+                      variant="flat"
                       key={genre?.id}
                       size={isSm ? 'sm' : 'md'}
-                      css={{
+                      className="hover:opacity-80"
+                      style={{
                         transition: 'all 0.2s ease-in-out',
                         ...(colorPalette
                           ? {
                               color: colorPalette[600],
                               backgroundColor: colorPalette[200],
-                              '&:hover': {
-                                backgroundColor: colorPalette[300],
-                              },
                             }
                           : {}),
                       }}
@@ -347,83 +323,88 @@ export const MediaDetail = (props: IMediaDetail) => {
             </div>
             <div className="mb-10 flex w-full flex-row flex-wrap items-center justify-between gap-4 grid-in-buttons">
               {(status === 'Released' || status === 'Ended' || status === 'Returning Series') && (
-                <Button
-                  type="button"
-                  auto
-                  // shadow
-                  color="gradient"
-                  onPress={() => setVisible(true)}
-                  css={{
-                    '@xsMax': {
-                      width: '100%',
-                    },
-                  }}
-                >
-                  <H5 h5 weight="bold" transform="uppercase">
-                    Watch now
-                  </H5>
-                </Button>
+                <Dialog open={showProvidereDialog} onOpenChange={setShowProvidereDialog}>
+                  <DialogTrigger asChild>
+                    <Button
+                      type="button"
+                      // shadow
+                      className="w-full bg-gradient-to-br from-secondary to-primary to-50% text-lg font-bold text-primary-foreground sm:w-auto"
+                      size="lg"
+                    >
+                      {t('watch-now')}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <SelectProvider
+                      visible={showProvidereDialog}
+                      closeHandler={() => setShowProvidereDialog(false)}
+                      type={type}
+                      title={titleEng}
+                      origTitle={orgTitle}
+                      year={releaseYear}
+                      id={item?.id}
+                      {...(type === 'tv' && { season: 1, episode: 1, isEnded: status === 'Ended' })}
+                      {...(type === 'movie' && { isEnded: status === 'Released' })}
+                    />
+                  </DialogContent>
+                </Dialog>
               )}
-              <div className="flex flex-row flex-wrap items-center justify-start">
-                <Button
-                  type="button"
-                  auto
-                  size={isSm ? 'sm' : 'md'}
-                  // shadow
-                  flat
-                  onPress={() => handler && handler(Number(id))}
+              <div className="flex flex-row flex-wrap items-center justify-start gap-x-4">
+                <Dialog
+                  open={showTrailerDialog}
+                  onOpenChange={(value: boolean) => handleShowTrailerDialog(value)}
                 >
-                  Watch Trailer
-                </Button>
-                <Spacer x={0.5} />
-                <Tooltip content="Share" placement="top" isDisabled={isSm}>
-                  <Button
-                    type="button"
-                    size={isSm ? 'sm' : 'md'}
-                    flat
-                    onPress={() => WebShareLink(window.location.href, `${title}`, `${description}`)}
-                    icon={<ShareIcon />}
-                    css={{ minWidth: 'min-content' }}
-                  />
+                  <DialogTrigger asChild>
+                    <Button type="button" size={isSm ? 'sm' : 'md'}>
+                      {t('watch-trailer')}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="overflow-hidden !p-0">
+                    <WatchTrailer trailer={trailer} currentTime={trailerTime} />
+                  </DialogContent>
+                </Dialog>
+                <Tooltip content="Share" placement="top" isDisabled={isSm} showArrow closeDelay={0}>
+                  <Button type="button" size={isSm ? 'sm' : 'md'} onPress={handleShare} isIconOnly>
+                    <ShareIcon />
+                  </Button>
                 </Tooltip>
               </div>
             </div>
           </div>
-        </Card.Body>
+        </CardBody>
       </Card>
-      <SelectProviderModal
-        visible={visible}
-        closeHandler={closeHandler}
-        type={type}
-        title={titleEng}
-        origTitle={orgTitle}
-        year={releaseYear}
-        id={item?.id}
-        {...(type === 'tv' && { season: 1, episode: 1, isEnded: status === 'Ended' })}
-        {...(type === 'movie' && { isEnded: status === 'Released' })}
-      />
     </>
   );
 };
 
 export const AnimeDetail = (props: IAnimeDetail) => {
-  // const { t } = useTranslation();
-  const { item, handler } = props;
-  const { id, genres, title, releaseDate, rating, image, type, color, description, status } =
-    item || {};
+  const { t } = useTranslation();
+  const { item, trailerTime } = props;
+  const {
+    id,
+    genres,
+    title,
+    releaseDate,
+    rating,
+    image,
+    type,
+    color,
+    description,
+    status,
+    trailer,
+  } = item || {};
   const navigate = useNavigate();
   const location = useLocation();
   const fetcher = useFetcher();
+  const isHydrated = useHydrated();
   const [size, ref] = useMeasure<HTMLDivElement>();
   const [imageSize, imageRef] = useMeasure<HTMLDivElement>();
   const { backgroundColor } = useColorDarkenLighten(color);
   const isSm = useMediaQuery('(max-width: 650px)', { initializeWithValue: false });
   const isXl = useMediaQuery('(max-width: 1280px)', { initializeWithValue: false });
-  const [visible, setVisible] = useState(false);
+  const [showProvidereDialog, setShowProvidereDialog] = useState(false);
+  const [showTrailerDialog, setShowTrailerDialog] = useState(false);
   const [colorPalette, setColorPalette] = useState<ColorPalette>();
-  const closeHandler = () => {
-    setVisible(false);
-  };
 
   useEffect(() => {
     if (ref.current) {
@@ -439,79 +420,64 @@ export const AnimeDetail = (props: IAnimeDetail) => {
   }, [color]);
 
   useEffect(() => {
-    if (fetcher.data && fetcher.data.color) {
-      setColorPalette(fetcher.data.color);
+    if (fetcher.data && (fetcher.data as { color: ColorPalette }).color) {
+      setColorPalette((fetcher.data as { color: ColorPalette }).color);
     }
   }, [fetcher.data]);
+
+  const handleShare = async () => {
+    const isShareSupported = await shareSupported();
+    if (isShareSupported) {
+      await shareData({
+        title: title?.userPreferred,
+        text: description,
+        url: window.location.href,
+      });
+    } else {
+      const isClipboardSupported = await clipboardSupported();
+      if (isClipboardSupported) {
+        copyTextToClipboard(window.location.href);
+        toast.success('Link copied to clipboard');
+      } else {
+        toast.error('Browser not supported');
+      }
+    }
+  };
 
   return (
     <>
       <Card
-        variant="flat"
-        css={{
-          display: 'flex',
-          flexFlow: 'column',
-          width: '100%',
-          borderWidth: 0,
-          backgroundColor: 'transparent',
-          borderBottomLeftRadius: 0,
-          borderBottomRightRadius: 0,
-          borderTopRightRadius: 0,
-          height: `calc(${size?.height}px)`,
-          backgroundImage: `linear-gradient(to bottom, transparent 80px, ${backgroundColor} 80px)`,
-          '@xs': {
-            backgroundImage: `linear-gradient(to bottom, transparent 200px, ${backgroundColor} 200px)`,
-          },
+        radius="none"
+        style={
+          {
+            height: `calc(${size?.height}px)`,
+            '--theme-movie-brand': isHydrated ? backgroundColor : 'transparent',
+          } as CSSProperties
+        }
+        classNames={{
+          base: 'flex flex-col w-full !bg-transparent bg-gradient-to-b !from-transparent from-[80px] !to-movie-brand-color border-0 to-[80px] sm:from-[200px] sm:to-[200px] shadow-none',
         }}
       >
-        <Card.Body
+        <CardBody
+          // @ts-ignore
           ref={ref}
-          css={{
-            position: 'absolute',
-            zIndex: 1,
-            bottom: 0,
-            flexGrow: 1,
-            display: 'flex',
-            justifyContent: 'center',
-            flexDirection: 'column',
-            padding: 0,
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
-          }}
+          className="z-1 absolute bottom-0 flex grow flex-col justify-center p-0"
         >
-          <BackgroundContent />
+          <div className={backgroundStyles({ content: true })} />
           <div className="grid w-full max-w-[1920px] grid-cols-[1fr_2fr] grid-rows-[1fr_auto_auto] items-stretch justify-center gap-x-4 gap-y-6 px-3 pt-5 grid-areas-small sm:grid-rows-[auto_1fr_auto] sm:px-3.5 sm:grid-areas-wide xl:px-4 2xl:px-5">
-            <div className="flex flex-col grid-in-image" ref={imageRef}>
+            <div className="flex flex-col items-center justify-center grid-in-image" ref={imageRef}>
               {image ? (
-                <Card.Image
-                  // @ts-ignore
-                  as={Image}
+                <Image
                   src={image}
                   title={title?.userPreferred || title?.english || title?.romaji || title?.native}
                   alt={title?.userPreferred || title?.english || title?.romaji || title?.native}
-                  objectFit="cover"
-                  css={{
-                    minWidth: 'auto !important',
-                    minHeight: 'auto !important',
-                    borderRadius: '$sm',
-                    boxShadow: '12px 12px 30px 10px rgb(104 112 118 / 0.35)',
-                    aspectRatio: '2 / 3',
-                    '@sm': {
-                      borderRadius: '$md',
-                    },
+                  radius="lg"
+                  shadow="sm"
+                  classNames={{
+                    wrapper: 'w-full sm:w-3/4 xl:w-1/2',
+                    img: 'aspect-[2/3] !min-h-[auto] !min-w-[auto]',
                   }}
-                  containerCss={{
-                    overflow: 'visible',
-                    width: '100% !important',
-                    '@xs': {
-                      width: '75% !important',
-                    },
-                    '@md': {
-                      width: '50% !important',
-                    },
-                  }}
-                  showSkeleton
-                  loaderUrl="/api/image"
+                  disableSkeleton={false}
                   placeholder="empty"
                   responsive={[
                     {
@@ -534,37 +500,25 @@ export const AnimeDetail = (props: IAnimeDetail) => {
                   }}
                 />
               ) : (
-                <div className="flex items-center justify-center">
-                  <Avatar
-                    icon={<PhotoIcon width={48} height={48} />}
-                    css={{
-                      width: '100% !important',
-                      height: 'auto !important',
-                      size: '$20',
-                      borderRadius: '$sm',
-                      aspectRatio: '2 / 3',
-                      '@xs': { width: '75% !important' },
-                      '@sm': { borderRadius: '$md' },
-                      '@md': { width: '50% !important' },
-                    }}
-                  />
+                <div className="z-0 flex aspect-[2/3] h-auto w-full items-center justify-center rounded-large bg-default sm:w-3/4 xl:w-1/2">
+                  <PhotoIcon width={36} height={36} />
                 </div>
               )}
-              {isSm ? null : <Spacer y={2} />}
+              {isSm ? null : <Spacer y={10} />}
             </div>
             <div className="flex w-full flex-col items-start justify-start grid-in-title">
-              <H2 h1 weight="bold" css={{ '@xsMax': { fontSize: '1.75rem !important' } }}>
+              <h1 className="!text-3xl md:!text-4xl">
                 {`${title?.userPreferred || title?.english || title?.romaji || title?.native}`}
-              </H2>
+              </h1>
             </div>
             <div className="flex flex-col gap-y-3 grid-in-info sm:gap-y-6">
               <div className="flex flex-row flex-wrap gap-3">
-                <Badge
-                  size={isSm ? 'sm' : 'md'}
-                  color="primary"
+                <Chip
+                  size="lg"
+                  radius="full"
                   variant="flat"
                   className="transition-all duration-200 ease-in-out"
-                  css={
+                  style={
                     colorPalette
                       ? {
                           backgroundColor: colorPalette[200],
@@ -578,13 +532,13 @@ export const AnimeDetail = (props: IAnimeDetail) => {
                     ratingType="anime"
                     color={colorPalette ? colorPalette[600] : undefined}
                   />
-                </Badge>
-                <Badge
-                  size={isSm ? 'sm' : 'md'}
-                  color="primary"
+                </Chip>
+                <Chip
+                  size="lg"
+                  radius="full"
                   variant="flat"
                   className="flex flex-row transition-all duration-200 ease-in-out"
-                  css={
+                  style={
                     colorPalette
                       ? {
                           backgroundColor: colorPalette[200],
@@ -593,32 +547,27 @@ export const AnimeDetail = (props: IAnimeDetail) => {
                       : { borderColor: '$primaryLightActive' }
                   }
                 >
-                  <H6 h6 weight="semibold" css={colorPalette ? { color: colorPalette[600] } : {}}>
+                  <h6 style={colorPalette ? { color: colorPalette[600] } : {}}>
                     {type}
                     {releaseDate ? ` • ${releaseDate}` : ''}
-                  </H6>
-                </Badge>
+                  </h6>
+                </Chip>
               </div>
               <div className="flex w-full flex-row flex-wrap items-center justify-start gap-3">
                 {genres &&
                   genres?.map((genre) => (
                     <Button
                       type="button"
-                      color="primary"
-                      flat
-                      auto
-                      // shadow
+                      variant="flat"
                       key={genre}
                       size={isSm ? 'sm' : 'md'}
-                      css={{
+                      className="hover:opacity-80"
+                      style={{
                         transition: 'all 0.2s ease-in-out',
                         ...(colorPalette
                           ? {
                               color: colorPalette[600],
                               backgroundColor: colorPalette[200],
-                              '&:hover': {
-                                backgroundColor: colorPalette[300],
-                              },
                             }
                           : {}),
                       }}
@@ -630,62 +579,55 @@ export const AnimeDetail = (props: IAnimeDetail) => {
               </div>
             </div>
             <div className="mb-10 flex w-full flex-row flex-wrap items-center justify-between gap-4 grid-in-buttons">
-              <Button
-                type="button"
-                auto
-                // shadow
-                color="gradient"
-                onPress={() => setVisible(true)}
-                css={{
-                  '@xsMax': {
-                    width: '100%',
-                  },
-                }}
-              >
-                <H5 h5 weight="bold" transform="uppercase">
-                  Watch now
-                </H5>
-              </Button>
-              <div className="flex flex-row flex-wrap items-center justify-start">
-                <Button
-                  type="button"
-                  auto
-                  size={isSm ? 'sm' : 'md'}
-                  // shadow
-                  flat
-                  onPress={() => handler && handler(Number(id))}
-                >
-                  Watch Trailer
-                </Button>
-                <Spacer x={0.5} />
-                <Tooltip content="Share" placement="top" isDisabled={isSm}>
+              <Dialog open={showProvidereDialog} onOpenChange={setShowProvidereDialog}>
+                <DialogTrigger asChild>
                   <Button
                     type="button"
-                    size={isSm ? 'sm' : 'md'}
-                    flat
-                    onPress={() => WebShareLink(window.location.href, `${title}`, `${description}`)}
-                    icon={<ShareIcon />}
-                    css={{ minWidth: 'min-content' }}
+                    size="lg"
+                    className="w-full bg-gradient-to-br from-secondary to-primary to-50% text-lg font-bold text-primary-foreground sm:w-auto"
+                  >
+                    {t('watch-now')}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <SelectProvider
+                    visible={showProvidereDialog}
+                    closeHandler={() => setShowProvidereDialog(false)}
+                    type="anime"
+                    id={id}
+                    title={title?.english || ''}
+                    origTitle={title?.native || ''}
+                    year={Number(releaseDate)}
+                    episode={1}
+                    season={undefined}
+                    animeType={type?.toLowerCase() || 'tv'}
+                    isEnded={status === 'FINISHED'}
                   />
+                </DialogContent>
+              </Dialog>
+              <div className="flex flex-row flex-wrap items-center justify-start gap-x-4">
+                {trailer ? (
+                  <Dialog open={showTrailerDialog} onOpenChange={setShowTrailerDialog}>
+                    <DialogTrigger asChild>
+                      <Button type="button" size={isSm ? 'sm' : 'md'}>
+                        {t('watch-trailer')}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="overflow-hidden !p-0">
+                      <WatchTrailer trailer={trailer} currentTime={trailerTime} />
+                    </DialogContent>
+                  </Dialog>
+                ) : null}
+                <Tooltip content="Share" placement="top" isDisabled={isSm}>
+                  <Button type="button" size={isSm ? 'sm' : 'md'} onPress={handleShare} isIconOnly>
+                    <ShareIcon />
+                  </Button>
                 </Tooltip>
               </div>
             </div>
           </div>
-        </Card.Body>
+        </CardBody>
       </Card>
-      <SelectProviderModal
-        visible={visible}
-        closeHandler={closeHandler}
-        type="anime"
-        id={id}
-        title={title?.english || ''}
-        origTitle={title?.native || ''}
-        year={Number(releaseDate)}
-        episode={1}
-        season={undefined}
-        animeType={type?.toLowerCase() || 'tv'}
-        isEnded={status === 'FINISHED'}
-      />
     </>
   );
 };
@@ -693,10 +635,16 @@ export const AnimeDetail = (props: IAnimeDetail) => {
 export const MediaBackgroundImage = (props: IMediaBackground) => {
   const { backdropPath, backgroundColor } = props;
   const [size, backgroundRef] = useMeasure<HTMLDivElement>();
+  const isHydrated = useHydrated();
   const isSm = useMediaQuery('(max-width: 650px)', { initializeWithValue: false });
   const { sidebarMiniMode, sidebarBoxedMode } = useSoraSettings();
-  const { scrollPosition } = useLayoutScrollPosition((scrollState) => scrollState);
+  const { scrollY } = useLayout((scrollState) => scrollState);
   const backgroundImageHeight = isSm ? 100 : 300;
+  const height = useTransform(
+    scrollY,
+    [0, 800 - backgroundImageHeight],
+    [backgroundImageHeight, 800],
+  );
   return (
     <div
       ref={backgroundRef}
@@ -705,37 +653,33 @@ export const MediaBackgroundImage = (props: IMediaBackground) => {
         sidebarBoxedMode: sidebarBoxedMode.value,
       })}
       style={{
-        backgroundImage: `url(${
-          process.env.NODE_ENV === 'development'
-            ? 'http://localhost:3000'
-            : 'https://sora-anime.vercel.app'
-        }/api/image?src=${encodeURIComponent(
-          backdropPath ||
-            'https://raw.githubusercontent.com/Khanhtran47/Sora/master/app/assets/images/background-default.jpg',
-        )}&width=${size?.width}&height=${
-          size?.height
-        }&fit=cover&position=center&background[]=0&background[]=0&background[]=0&background[]=0&quality=80&compressionLevel=9&loop=0&delay=100&crop=null&contentType=image%2Fwebp)`,
+        backgroundImage:
+          size?.width !== undefined
+            ? `url(/api/image?src=${encodeURIComponent(
+                backdropPath ||
+                  'https://raw.githubusercontent.com/Khanhtran47/Sora/master/app/assets/images/background-default.jpg',
+              )}&width=${Math.round(size?.width)}&height=${Math.round(
+                size?.height,
+              )}&fit=cover&position=center&background[]=0&background[]=0&background[]=0&background[]=0&quality=80&compressionLevel=9&loop=0&delay=100&crop=null&contentType=image%2Fwebp)`
+            : 'none',
         aspectRatio: '2 / 1',
         visibility: size?.width !== undefined ? 'visible' : 'hidden',
         backgroundSize: `${size?.width}px auto`,
       }}
     >
-      <div
+      <motion.div
         style={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
           width: '100%',
-          height:
-            scrollPosition?.y && backgroundImageHeight + scrollPosition?.y > 800
-              ? 800
-              : scrollPosition?.y && backgroundImageHeight + scrollPosition?.y < 800
-              ? backgroundImageHeight + scrollPosition?.y
-              : backgroundImageHeight,
-          backgroundImage: `linear-gradient(to top, ${backgroundColor}, ${tinycolor(
-            backgroundColor,
-          ).setAlpha(0)})`,
+          height,
+          backgroundImage: isHydrated
+            ? `linear-gradient(to top, ${backgroundColor}, ${tinycolor(backgroundColor).setAlpha(
+                0,
+              )})`
+            : 'none',
         }}
       />
     </div>

@@ -1,6 +1,5 @@
-/* eslint-disable @typescript-eslint/indent */
-import { Link } from '@remix-run/react';
-import { Navigation } from 'swiper';
+import { isMobile } from 'react-device-detect';
+import { FreeMode, Navigation } from 'swiper/modules';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { tv } from 'tailwind-variants';
 
@@ -14,19 +13,18 @@ interface IMediaListCardProps {
   genresTv?: { [id: string]: string };
   isCoverCard?: boolean;
   items?: IMedia[];
-  itemsType?: 'movie' | 'tv' | 'anime' | 'people' | 'episode';
+  itemsType?: 'movie' | 'tv' | 'anime' | 'people' | 'episode' | 'movie-tv';
   navigation?: { nextEl?: string | HTMLElement | null; prevEl?: string | HTMLElement | null };
   provider?: string;
   setSlideProgress?: React.Dispatch<React.SetStateAction<number>>;
-  virtual?: boolean;
 }
 
 const swiperSlideStyles = tv({
   variants: {
     cardType: {
-      coverCard: '!w-[280px] sm:!w-[480px]',
-      card: 'nextui-sm:!w-[244px] !w-[164px] sm:!w-[210px] 2xl:!w-[280px]',
-      peopleCard: '!w-[160px]',
+      coverCard: '!w-[290px] sm:!w-[490px]',
+      card: '!w-[168px] sm:!w-[190px] md:!w-[210px] lg:!w-[250px] xl:!w-[270px]',
+      peopleCard: '!w-[168px]',
     },
   },
 });
@@ -46,7 +44,6 @@ const MediaListCard = (props: IMediaListCardProps) => {
     navigation,
     provider,
     setSlideProgress,
-    virtual,
   } = props;
 
   if (isCoverCard) {
@@ -55,8 +52,18 @@ const MediaListCard = (props: IMediaListCardProps) => {
         {coverItem && coverItem?.length > 0 && (
           <Swiper
             className={swiperStyles()}
-            modules={[Navigation]}
+            modules={[Navigation, FreeMode]}
             grabCursor
+            freeMode={{
+              enabled: isMobile,
+              sticky: true,
+              minimumVelocity: 0.1,
+              momentum: true,
+              momentumVelocityRatio: 1,
+              momentumRatio: 1,
+              momentumBounce: true,
+              momentumBounceRatio: 1,
+            }}
             spaceBetween={10}
             slidesPerView="auto"
             slidesPerGroup={1}
@@ -70,24 +77,22 @@ const MediaListCard = (props: IMediaListCardProps) => {
           >
             {coverItem &&
               coverItem.map((item, index) => {
-                const href = `/collections/${item.id}`;
+                const href = `/lists/${item.id}`;
                 return (
                   <SwiperSlide
                     className={swiperSlideStyles({
                       cardType: 'coverCard',
                     })}
-                    key={`${item.id}-${index}-card`}
+                    key={`${item.id}-${index}-cover-card`}
                   >
-                    <Link to={href} style={{ display: 'flex', padding: '0.5rem 0' }}>
-                      <MediaItem
-                        backdropPath={item?.backdropPath}
-                        isCoverCard={isCoverCard}
-                        key={item.id}
-                        title={item?.name}
-                        type="card"
-                        virtual={virtual}
-                      />
-                    </Link>
+                    <MediaItem
+                      backdropPath={item?.backdropPath}
+                      isCoverCard={isCoverCard}
+                      isSliderCard
+                      linkTo={href}
+                      title={item?.name}
+                      type="card"
+                    />
                   </SwiperSlide>
                 );
               })}
@@ -102,8 +107,18 @@ const MediaListCard = (props: IMediaListCardProps) => {
       {items && items?.length > 0 ? (
         <Swiper
           className={swiperStyles()}
-          modules={[Navigation]}
+          modules={[Navigation, FreeMode]}
           grabCursor
+          freeMode={{
+            enabled: isMobile,
+            sticky: true,
+            minimumVelocity: 0.1,
+            momentum: true,
+            momentumVelocityRatio: 1,
+            momentumRatio: 1,
+            momentumBounce: true,
+            momentumBounceRatio: 1,
+          }}
           spaceBetween={10}
           slidesPerView="auto"
           slidesPerGroup={1}
@@ -121,45 +136,50 @@ const MediaListCard = (props: IMediaListCardProps) => {
                 itemsType && itemsType === 'episode'
                   ? `/anime/${item.id}/episode/${item.episodeNumber}/watch?provider=${provider}`
                   : itemsType === 'anime'
-                  ? `/anime/${item.id}/overview`
+                  ? `/anime/${item.id}/`
                   : itemsType === 'people'
-                  ? `/people/${item.id}/overview`
-                  : item?.mediaType === 'movie' || itemsType === 'movie'
+                  ? `/people/${item.id}/`
+                  : itemsType === 'movie'
                   ? `/movies/${item.id}/`
-                  : `/tv-shows/${item.id}/`;
+                  : itemsType === 'tv'
+                  ? `/tv-shows/${item.id}/`
+                  : itemsType === 'movie-tv' && item?.mediaType === 'movie'
+                  ? `/movies/${item.id}/`
+                  : itemsType === 'movie-tv' && item?.mediaType === 'tv'
+                  ? `/tv-shows/${item.id}/`
+                  : '/';
+
               return (
                 <SwiperSlide
-                  key={`${item.id}-${index}-card`}
+                  key={`${item.id}-${index}-card-${itemsType}`}
                   className={swiperSlideStyles({
                     cardType: item?.mediaType === 'people' ? 'peopleCard' : 'card',
                   })}
                 >
-                  <Link to={href} style={{ display: 'flex', padding: '0.5rem 0' }}>
-                    <MediaItem
-                      backdropPath={item?.backdropPath}
-                      character={item?.character}
-                      color={item?.color}
-                      episodeNumber={item?.episodeNumber}
-                      episodeTitle={item?.episodeTitle}
-                      genreIds={item?.genreIds}
-                      genresAnime={item?.genresAnime}
-                      genresMovie={genresMovie}
-                      genresTv={genresTv}
-                      id={item?.id}
-                      job={item?.job}
-                      key={item.id}
-                      knownFor={item?.knownFor}
-                      mediaType={item?.mediaType}
-                      overview={item?.overview}
-                      posterPath={item?.posterPath}
-                      releaseDate={item?.releaseDate}
-                      title={item?.title}
-                      trailer={item?.trailer}
-                      type={itemsType === 'episode' ? itemsType : 'card'}
-                      virtual={virtual}
-                      voteAverage={item?.voteAverage}
-                    />
-                  </Link>
+                  <MediaItem
+                    backdropPath={item?.backdropPath}
+                    character={item?.character}
+                    color={item?.color}
+                    episodeNumber={item?.episodeNumber}
+                    episodeTitle={item?.episodeTitle}
+                    genreIds={item?.genreIds}
+                    genresAnime={item?.genresAnime}
+                    genresMovie={genresMovie}
+                    genresTv={genresTv}
+                    id={item?.id}
+                    isSliderCard
+                    job={item?.job}
+                    linkTo={href}
+                    knownFor={item?.knownFor}
+                    mediaType={item?.mediaType}
+                    overview={item?.overview}
+                    posterPath={item?.posterPath}
+                    releaseDate={item?.releaseDate}
+                    title={item?.title}
+                    trailer={item?.trailer}
+                    type={itemsType === 'episode' ? itemsType : 'card'}
+                    voteAverage={item?.voteAverage}
+                  />
                 </SwiperSlide>
               );
             })}

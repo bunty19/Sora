@@ -1,24 +1,30 @@
-/* eslint-disable @typescript-eslint/indent */
-/* eslint-disable no-unsafe-optional-chaining */
-import * as React from 'react';
-import { Avatar, Card, Loading, Tooltip } from '@nextui-org/react';
-import { useMeasure, useMediaQuery } from '@react-hookz/web';
-import { useFetcher } from '@remix-run/react';
-import { motion } from 'framer-motion';
+import { useMemo, useRef, useState } from 'react';
+import { Button } from '@nextui-org/button';
+import { Card, CardBody, CardFooter } from '@nextui-org/card';
+// import { Tooltip } from '@nextui-org/react';
+import { useIntersectionObserver, useMeasure } from '@react-hookz/web';
+import { Link, useNavigate } from '@remix-run/react';
+// import { motion } from 'framer-motion';
 import { isMobile } from 'react-device-detect';
-import { useInView } from 'react-intersection-observer';
-import Image, { MimeType } from 'remix-image';
-import { ClientOnly } from 'remix-utils';
+import Balancer from 'react-wrap-balancer';
+import { MimeType } from 'remix-image';
+import { tv } from 'tailwind-variants';
 
 import type { IMedia, Title } from '~/types/media';
 import type { ITrailer } from '~/services/consumet/anilist/anilist.types';
-import useCardHoverStore from '~/store/card/useCardHoverStore';
-import { useSoraSettings } from '~/hooks/useLocalStorage';
-import type { Trailer } from '~/components/elements/modal/WatchTrailerModal';
-import { H5, H6 } from '~/components/styles/Text.styles';
+import { useSoraSettings } from '~/utils/react/hooks/useLocalStorage';
+// import useCardHoverStore from '~/store/card/useCardHoverStore';
+import { useLayout } from '~/store/layout/useLayout';
+// import type { Trailer } from '~/components/elements/dialog/WatchTrailerDialog';
+import Image from '~/components/elements/Image';
+import {
+  ScrollArea,
+  ScrollBar,
+  ScrollCorner,
+  ScrollViewport,
+} from '~/components/elements/ScrollArea';
+import Rating from '~/components/elements/shared/Rating';
 import PhotoIcon from '~/assets/icons/PhotoIcon';
-
-import CardItemHover from './CardItemHover';
 
 interface ICardItemProps {
   backdropPath: string;
@@ -32,18 +38,79 @@ interface ICardItemProps {
   genresTv?: { [id: string]: string };
   id: number;
   isCoverCard?: boolean;
+  isCreditsCard?: boolean;
   isEpisodeCard?: boolean;
+  isSliderCard?: boolean;
   job: string;
   knownFor?: IMedia[];
+  linkTo?: string;
   mediaType: 'movie' | 'tv' | 'anime' | 'people';
   overview: string;
   posterPath: string;
   releaseDate: string | number;
   title: string | Title;
   trailer?: ITrailer;
-  virtual?: boolean;
   voteAverage: number;
 }
+
+const cardItemStyles = tv({
+  slots: {
+    base: '!w-[164px] data-[hover=true]:ring-2 data-[hover=true]:ring-focus',
+    body: 'aspect-[2/3]',
+    imageContainer: '',
+    image: 'aspect-[2/3]',
+    content: '',
+    footer: '',
+  },
+  variants: {
+    listViewType: {
+      card: {
+        base: '!w-[164px] sm:!w-[180px] md:!w-[200px] lg:!w-[244px] xl:!w-[264px]',
+        body: 'aspect-[2/3] w-full overflow-hidden p-0',
+        imageContainer: 'h-full w-full focus:outline-none',
+        image: 'z-0 aspect-[2/3] !min-h-[auto] !min-w-[auto] !transition-[transform,_opacity]',
+        footer:
+          'flex min-h-[4.875rem] max-w-[164px] flex-col items-start justify-start focus:outline-none focus:ring-2 focus:ring-inset focus:ring-focus sm:max-w-[210px] md:max-w-[200px] lg:max-w-[244px] xl:max-w-[264px]',
+      },
+      detail: {
+        base: '!w-full sm:!w-[480px]',
+        body: 'flex !h-[174px] w-full !flex-row !overflow-hidden p-0 sm:aspect-[5/3] sm:!h-[auto]',
+        imageContainer: 'w-[116px] focus:outline-none sm:w-2/5',
+        image: 'z-0 !h-[174px] !min-h-[auto] !min-w-[116px] sm:aspect-[2/3] sm:!h-[auto]',
+        content: 'flex grow flex-col gap-y-4 p-3 sm:w-3/5',
+        footer:
+          'absolute bottom-0 flex !w-[116px] justify-center border-t border-divider bg-background/[0.6] backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-inset focus:ring-focus sm:!w-2/5',
+      },
+      table: {
+        base: '!w-full',
+        body: 'flex !h-[174px] w-full !flex-row !overflow-hidden p-0',
+        imageContainer: 'w-[116px] focus:outline-none',
+        image: 'z-0 !h-[174px] !min-h-[auto] !min-w-[116px]',
+        content: 'flex grow flex-col gap-y-4 p-3',
+        footer: '',
+      },
+      coverCard: {
+        base: '!w-[280px] sm:!w-[480px]',
+        body: 'aspect-[16/9] w-full overflow-hidden p-0',
+        image:
+          'z-0 aspect-[16/9] !min-h-[auto] !min-w-[auto] overflow-hidden !transition-[transform,_opacity]',
+        footer:
+          'absolute bottom-0 flex justify-center border-t border-divider bg-background/[0.6] backdrop-blur-md',
+      },
+      people: {
+        base: '!w-[164px]',
+        body: 'aspect-[2/3] w-full overflow-hidden p-0',
+        imageContainer: 'h-full w-full focus:outline-none',
+        image:
+          'z-0 aspect-[2/3] !min-h-[auto] !min-w-[auto] overflow-hidden !transition-[transform,_opacity]',
+        footer:
+          'flex min-h-[5.25rem] max-w-[164px] flex-col items-start justify-start focus:outline-none focus:ring-2 focus:ring-inset focus:ring-focus',
+      },
+    },
+  },
+  compoundVariants: [],
+  compoundSlots: [],
+});
 
 const CardItem = (props: ICardItemProps) => {
   const {
@@ -56,89 +123,106 @@ const CardItem = (props: ICardItemProps) => {
     genresAnime,
     genresMovie,
     genresTv,
-    id,
+    // id,
     isCoverCard,
+    isCreditsCard,
     isEpisodeCard,
+    isSliderCard,
     job,
     knownFor,
+    linkTo,
     mediaType,
     overview,
     posterPath,
     releaseDate,
     title,
-    trailer,
-    virtual,
+    // trailer,
     voteAverage,
   } = props;
-  const { ref, inView } = useInView({
-    rootMargin: '3000px 1000px',
-    triggerOnce: !virtual,
+  // const fetcher = useFetcher();
+  const navigate = useNavigate();
+  // const [_trailerCard, setTrailerCard] = useState<Trailer>({});
+  const [isTooltipVisible] = useState(false);
+  const { listViewType } = useSoraSettings();
+  const [size, imageRef] = useMeasure<HTMLAnchorElement>();
+  const { viewportRef } = useLayout((scrollState) => scrollState);
+  // useEffect(() => {
+  //   if (fetcher.data && fetcher.data.videos) {
+  //     const { results } = fetcher.data.videos;
+  //     const officialTrailer = results.find((result: Trailer) => result.type === 'Trailer');
+  //     setTrailerCard(officialTrailer);
+  //   }
+  // }, [fetcher.data]);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const cardIntersection = useIntersectionObserver(cardRef, {
+    root: viewportRef,
+    rootMargin: '1500px 650px 1500px 650px',
   });
-  const fetcher = useFetcher();
-  const setIsCardPlaying = useCardHoverStore((state) => state.setIsCardPlaying);
-  const [trailerCard, setTrailerCard] = React.useState<Trailer>({});
-  const { isPlayTrailer } = useSoraSettings();
-  const [size, imageRef] = useMeasure<HTMLDivElement>();
+  const inView = useMemo(() => {
+    if (isSliderCard) {
+      return true;
+    }
+    return cardIntersection?.isIntersecting;
+  }, [cardIntersection, isSliderCard]);
+
   const titleItem =
     typeof title === 'string'
       ? title
       : title?.userPreferred || title?.english || title?.romaji || title?.native;
-  const isSm = useMediaQuery('(min-width: 650px)', { initializeWithValue: false });
-  const isMd = useMediaQuery('(min-width: 768px)', { initializeWithValue: false });
-  const isLg = useMediaQuery('(min-width: 1024px)', { initializeWithValue: false });
-  const isXl = useMediaQuery('(min-width: 1280px)', { initializeWithValue: false });
-  const cardMaxWidth = isXl ? '264px' : isLg ? '244px' : isMd ? '200px' : isSm ? '180px' : '164px';
-
-  React.useEffect(() => {
-    if (fetcher.data && fetcher.data.videos) {
-      const { results } = fetcher.data.videos;
-      const officialTrailer = results.find((result: Trailer) => result.type === 'Trailer');
-      setTrailerCard(officialTrailer);
-    }
-  }, [fetcher.data]);
+  const { base, body, imageContainer, image, content, footer } = cardItemStyles({
+    listViewType: isCoverCard
+      ? 'coverCard'
+      : mediaType === 'people'
+      ? 'people'
+      : isSliderCard || isEpisodeCard
+      ? 'card'
+      : isCreditsCard
+      ? 'table'
+      : listViewType?.value === 'card'
+      ? 'card'
+      : listViewType?.value === 'detail'
+      ? 'detail'
+      : listViewType?.value === 'table'
+      ? 'table'
+      : 'card',
+  });
 
   if (isCoverCard) {
     return (
       <Card
-        as="div"
         isHoverable
         isPressable
-        css={{
-          width: '100%',
-          minWidth: isSm ? '480px' : '280px',
-          borderWidth: 0,
-          filter: 'unset',
-          '&:hover': {
-            boxShadow: '0 0 0 1px var(--nextui-colors-primarySolidHover)',
-            filter:
-              'drop-shadow(0 4px 12px rgb(104 112 118 / 0.15)) drop-shadow(0 20px 8px rgb(104 112 118 / 0.1))',
-          },
+        className={`${base()} ${isSliderCard ? 'my-4' : ''}`}
+        role="button"
+        ref={cardRef}
+        onPress={(e) => {
+          if (e.pointerType === 'keyboard') {
+            navigate(linkTo || '/');
+          }
         }}
-        role="figure"
-        ref={ref}
       >
-        <Card.Body ref={imageRef} css={{ p: 0, width: '100%', aspectRatio: '16 / 9' }}>
+        <CardBody
+          className={body()}
+          // @ts-ignore
+          ref={imageRef}
+          as={Link}
+          to={linkTo || '/'}
+        >
           {size ? (
-            <Card.Image
-              // @ts-ignore
-              as={Image}
+            <Image
               src={backdropPath}
-              objectFit="cover"
               width="100%"
-              height="auto"
               alt={titleItem}
               title={titleItem}
-              css={{
-                aspectRatio: '16 / 9',
+              classNames={{
+                img: image(),
               }}
-              showSkeleton
-              loaderUrl="/api/image"
               placeholder="empty"
               loading="lazy"
+              disableSkeleton={false}
+              isZoomed={!isSliderCard}
               decoding={inView ? 'async' : 'auto'}
-              options={{
-                contentType: MimeType.WEBP,
-              }}
+              options={{ contentType: MimeType.WEBP }}
               responsive={[
                 {
                   size: {
@@ -149,22 +233,12 @@ const CardItem = (props: ICardItemProps) => {
               ]}
             />
           ) : null}
-        </Card.Body>
-        <Card.Footer
-          className="backdrop-blur-md"
-          css={{
-            position: 'absolute',
-            backgroundColor: '$backgroundAlpha',
-            borderTop: '$borderWeights$light solid $border',
-            bottom: 0,
-            zIndex: 1,
-            justifyContent: 'center',
-          }}
-        >
-          <H5 h5 weight="bold">
-            {titleItem}
-          </H5>
-        </Card.Footer>
+        </CardBody>
+        <CardFooter className={footer()} as={Link} to={linkTo || '/'}>
+          <h5 className="text-center font-semibold">
+            <Balancer>{titleItem}</Balancer>
+          </h5>
+        </CardFooter>
       </Card>
     );
   }
@@ -174,43 +248,38 @@ const CardItem = (props: ICardItemProps) => {
       as="div"
       isHoverable
       isPressable
-      css={{
-        width: mediaType === 'people' ? '164px' : cardMaxWidth,
-        minHeight: `${mediaType === 'people' ? '324px' : '318px'} !important`,
-        borderWidth: 0,
-        filter: 'unset',
-        '&:hover': {
-          boxShadow: '0 0 0 1px var(--nextui-colors-primarySolidHover)',
-          filter:
-            'drop-shadow(0 4px 12px rgb(104 112 118 / 0.15)) drop-shadow(0 20px 8px rgb(104 112 118 / 0.1))',
-        },
-      }}
+      className={`${base()} ${isSliderCard ? 'my-4' : ''}`}
       role="figure"
-      ref={ref}
+      style={{ opacity: isTooltipVisible && !isMobile ? 0 : 1 }}
+      ref={cardRef}
+      onPress={(e) => {
+        if (e.pointerType === 'keyboard') {
+          navigate(linkTo || '/');
+        }
+      }}
     >
-      <Card.Body ref={imageRef} css={{ p: 0, width: '100%', aspectRatio: '2 / 3' }}>
-        {size ? (
-          // eslint-disable-next-line react/jsx-no-useless-fragment
-          <>
-            {posterPath ? (
-              <Card.Image
-                // @ts-ignore
-                as={Image}
+      <CardBody className={body()}>
+        <Link className={imageContainer()} to={linkTo || '/'} ref={imageRef}>
+          {size && !isTooltipVisible && inView ? (
+            posterPath ? (
+              <Image
                 src={posterPath || ''}
-                objectFit="cover"
                 width="100%"
-                height="auto"
                 alt={titleItem}
                 title={titleItem}
                 loading="lazy"
-                decoding={inView ? 'async' : 'auto'}
-                css={{ aspectRatio: '2 / 3' }}
-                showSkeleton
-                loaderUrl="/api/image"
-                placeholder="empty"
-                options={{
-                  contentType: MimeType.WEBP,
+                classNames={{
+                  img: image(),
                 }}
+                decoding={inView ? 'async' : 'auto'}
+                disableSkeleton={false}
+                isZoomed={
+                  (listViewType.value === 'card' || mediaType === 'people') &&
+                  !isSliderCard &&
+                  !isCreditsCard
+                }
+                placeholder="empty"
+                options={{ contentType: MimeType.WEBP }}
                 responsive={[
                   {
                     size: {
@@ -221,134 +290,233 @@ const CardItem = (props: ICardItemProps) => {
                 ]}
               />
             ) : (
-              <Avatar
-                icon={<PhotoIcon width={48} height={48} />}
-                pointer
-                css={{
-                  size: '$20',
-                  borderRadius: '0 !important',
-                  width: '100%',
-                  height: 'auto',
-                  aspectRatio: '2 / 3',
-                }}
+              <div className="z-0 flex aspect-[2/3] h-full w-full items-center justify-center rounded-large bg-default">
+                <PhotoIcon width={48} height={48} />
+              </div>
+            )
+          ) : null}
+        </Link>
+        {listViewType.value === 'detail' &&
+        !isCreditsCard &&
+        !isSliderCard &&
+        !isEpisodeCard &&
+        mediaType !== 'people' &&
+        inView ? (
+          <div className={content()}>
+            <div className="flex h-6 flex-row items-center justify-between">
+              <h6 className="hidden 2xs:block">
+                {`${mediaType.charAt(0).toUpperCase()}${mediaType.slice(1)} • ${releaseDate}`}
+              </h6>
+              <Rating
+                ratingType={mediaType}
+                rating={mediaType === 'anime' ? voteAverage : voteAverage.toFixed(1)}
+                showStarIcon
               />
-            )}
-          </>
+            </div>
+            <ScrollArea
+              type="hover"
+              scrollHideDelay={400}
+              style={{
+                height: 'calc(100% - 5rem)',
+                width: '100%',
+              }}
+            >
+              <ScrollViewport>
+                <p dangerouslySetInnerHTML={{ __html: overview || '' }} className="pr-4 text-sm" />
+              </ScrollViewport>
+              <ScrollBar />
+              <ScrollCorner />
+            </ScrollArea>
+            <div className="flex flex-row items-center justify-start gap-x-3">
+              {mediaType === 'anime'
+                ? genresAnime?.slice(0, 2).map((genre) => (
+                    <Button
+                      key={genre}
+                      type="button"
+                      color="default"
+                      variant="solid"
+                      size="sm"
+                      onPress={() => navigate(`/discover/anime?genres=${genre}`)}
+                    >
+                      {genre}
+                    </Button>
+                  ))
+                : genreIds?.slice(0, 2).map((genreId) => {
+                    if (mediaType === 'movie') {
+                      return (
+                        <Button
+                          key={genreId}
+                          type="button"
+                          color="default"
+                          variant="solid"
+                          size="sm"
+                          onPress={() =>
+                            navigate(`/discover/movies?with_genres=${genresMovie?.[genreId]}`)
+                          }
+                        >
+                          {genresMovie?.[genreId]}
+                        </Button>
+                      );
+                    }
+                    return (
+                      <Button
+                        key={genreId}
+                        type="button"
+                        color="default"
+                        variant="solid"
+                        size="sm"
+                        onPress={() =>
+                          navigate(`/discover/tv-shows?with_genres=${genresTv?.[genreId]}`)
+                        }
+                      >
+                        {genresTv?.[genreId]}
+                      </Button>
+                    );
+                  })}
+            </div>
+          </div>
+        ) : (listViewType.value === 'table' || isCreditsCard) &&
+          !isSliderCard &&
+          !isEpisodeCard &&
+          mediaType !== 'people' &&
+          inView ? (
+          <div className={content()}>
+            <Link
+              to={linkTo || '/'}
+              className="line-clamp-1 text-lg font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-focus"
+            >
+              {titleItem}
+            </Link>
+            <div className="flex flex-row items-center justify-between">
+              <div className="flex flex-row items-center justify-start gap-x-3">
+                {mediaType === 'anime'
+                  ? genresAnime?.slice(0, 2).map((genre, index) => (
+                      <Button
+                        key={genre}
+                        type="button"
+                        color="default"
+                        variant="solid"
+                        size="sm"
+                        onPress={() => navigate(`/discover/anime?genres=${genre}`)}
+                        className={index === 1 ? '!hidden sm:!flex' : ''}
+                      >
+                        {genre}
+                      </Button>
+                    ))
+                  : genreIds?.slice(0, 2).map((genreId, index) => {
+                      if (mediaType === 'movie') {
+                        return (
+                          <Button
+                            key={genreId}
+                            type="button"
+                            color="default"
+                            variant="solid"
+                            size="sm"
+                            onPress={() =>
+                              navigate(`/discover/movies?with_genres=${genresMovie?.[genreId]}`)
+                            }
+                            className={index === 1 ? '!hidden sm:!flex' : ''}
+                          >
+                            {genresMovie?.[genreId]}
+                          </Button>
+                        );
+                      }
+                      return (
+                        <Button
+                          key={genreId}
+                          type="button"
+                          color="default"
+                          variant="solid"
+                          size="sm"
+                          onPress={() =>
+                            navigate(`/discover/tv-shows?with_genres=${genresTv?.[genreId]}`)
+                          }
+                          className={index === 1 ? '!hidden sm:flex' : ''}
+                        >
+                          {genresTv?.[genreId]}
+                        </Button>
+                      );
+                    })}
+              </div>
+              <div className="flex h-6 flex-row items-center justify-between gap-x-3">
+                <h6 className="hidden sm:block">
+                  {`${mediaType.charAt(0).toUpperCase()}${mediaType.slice(1)} • ${releaseDate}`}
+                </h6>
+                <Rating
+                  ratingType={mediaType}
+                  rating={mediaType === 'anime' ? voteAverage : voteAverage.toFixed(1)}
+                  className="hidden 2xs:flex"
+                />
+              </div>
+            </div>
+            <ScrollArea
+              type="hover"
+              scrollHideDelay={400}
+              style={{
+                height: 'calc(100% - 5rem)',
+                width: '100%',
+                boxShadow: 'none',
+              }}
+            >
+              <ScrollViewport>
+                <p dangerouslySetInnerHTML={{ __html: overview || '' }} className="pr-4 text-sm" />
+              </ScrollViewport>
+              <ScrollBar />
+              <ScrollCorner />
+            </ScrollArea>
+          </div>
         ) : null}
-      </Card.Body>
-      <Tooltip
-        placement="top"
-        content={
-          <ClientOnly fallback={<Loading type="default" />}>
-            {() => {
-              if (isEpisodeCard || mediaType === 'people') {
-                return null;
-              }
-              return (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.2, ease: [0, 0.71, 0.2, 1.01] }}
-                >
-                  <CardItemHover
-                    backdropPath={backdropPath}
-                    genreIds={genreIds}
-                    genresAnime={genresAnime}
-                    genresMovie={genresMovie}
-                    genresTv={genresTv}
-                    mediaType={mediaType}
-                    overview={overview}
-                    posterPath={posterPath}
-                    releaseDate={releaseDate}
-                    title={titleItem || ''}
-                    trailer={trailer || trailerCard}
-                    voteAverage={voteAverage}
-                  />
-                </motion.div>
-              );
-            }}
-          </ClientOnly>
-        }
-        rounded
-        isDisabled={isMobile}
-        // shadow
-        hideArrow
-        offset={0}
-        visible={false}
-        className="!w-fit"
-        css={isEpisodeCard || mediaType === 'people' ? { p: 0 } : { zIndex: 2999 }}
-        onVisibleChange={(visible) => {
-          if (visible) {
-            if (mediaType !== 'anime' && mediaType !== 'people' && isPlayTrailer.value)
-              fetcher.load(`/${mediaType === 'movie' ? 'movies' : 'tv-shows'}/${id}/videos`);
-          } else {
-            setIsCardPlaying(false);
-          }
-        }}
-      >
-        <Card.Footer
-          css={{
-            justifyItems: 'flex-start',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            minHeight: mediaType === 'people' ? '5.25rem' : '4.875rem',
-            maxWidth: mediaType === 'people' ? '160px' : '164px',
-            ...(mediaType !== 'people'
-              ? {
-                  '@xs': { maxWidth: '210px' },
-                  '@sm': { maxWidth: '244px' },
-                  '@lg': { maxWidth: '280px' },
-                }
-              : {}),
-          }}
-        >
-          <H5
-            h5
-            weight="bold"
-            css={{
+      </CardBody>
+      {(listViewType.value === 'card' || mediaType === 'people' || isSliderCard || isEpisodeCard) &&
+      !isCreditsCard &&
+      inView ? (
+        <CardFooter className={footer()} as={Link} to={linkTo || '/'}>
+          <h5
+            className="!line-clamp-2 w-full text-left font-semibold"
+            style={{
               ...(color ? { color } : null),
               minWidth: `${mediaType === 'people' ? '100px' : '150px'}`,
-              padding: '0 0.25rem',
-              ...(mediaType !== 'people' ? { '@xs': { minWidth: '240px' } } : {}),
             }}
           >
             {titleItem}
-          </H5>
+          </h5>
           {isEpisodeCard ? (
-            <H6 h6 css={{ color: '$accents7', fontWeight: '$semibold', fontSize: '$sm' }}>
+            <p className="line-clamp-2 w-full text-left text-sm text-foreground/60">
               EP {episodeNumber} - {episodeTitle}
-            </H6>
+            </p>
           ) : null}
           {mediaType === 'people' ? (
             <>
               {knownFor ? (
-                <H6
-                  h6
-                  className="!line-clamp-2"
-                  css={{ color: '$accents7', fontWeight: '$semibold' }}
-                >
+                <p className="line-clamp-2 w-full text-left text-sm text-foreground/60">
                   {knownFor?.map((movie, index) => (
                     <>
                       {movie?.title || movie?.originalTitle || movie?.name || movie?.originalName}
                       {knownFor?.length && (index < knownFor?.length - 1 ? ', ' : '')}
                     </>
                   ))}
-                </H6>
+                </p>
               ) : null}
               {character ? (
-                <H6 h6 css={{ color: '$accents7', fontWeight: '$semibold' }}>
+                <p className="line-clamp-2 w-full text-left text-sm text-foreground/60">
                   {character}
-                </H6>
+                </p>
               ) : null}
               {job ? (
-                <H6 h6 css={{ color: '$accents7', fontWeight: '$semibold' }}>
-                  {job}
-                </H6>
+                <p className="line-clamp-2 w-full text-left text-sm text-foreground/60">{job}</p>
               ) : null}
             </>
           ) : null}
-        </Card.Footer>
-      </Tooltip>
+        </CardFooter>
+      ) : listViewType.value === 'detail' &&
+        !isSliderCard &&
+        !isEpisodeCard &&
+        !isCreditsCard &&
+        inView ? (
+        <CardFooter className={footer()} as={Link} to={linkTo || '/'}>
+          <h5 className="line-clamp-2 font-semibold">{titleItem}</h5>
+        </CardFooter>
+      ) : null}
     </Card>
   );
 };

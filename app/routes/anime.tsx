@@ -1,38 +1,25 @@
-import { Badge, Container } from '@nextui-org/react';
-import type { MetaFunction } from '@remix-run/node';
-import { NavLink, Outlet } from '@remix-run/react';
+import { Outlet } from '@remix-run/react';
+import { mergeMeta } from '~/utils';
 
+import type { Handle } from '~/types/handle';
 import { animePages } from '~/constants/tabLinks';
+import { BreadcrumbItem } from '~/components/elements/Breadcrumb';
 
-export const meta: MetaFunction = () => ({
-  title: 'Free Anime HD - Watch Anime HD Online on Sora',
-  description: 'Watch latest anime online in HD Quality. Unlimited streaming anime for free now',
-  keywords:
-    'watch free anime, free anime to watch online, watch anime online free, free anime streaming, free anime full, free anime download, watch anime hd, anime to watch, hd anime, stream anime, anime to stream, watch anime free',
-  'og:url': 'https://sora-anime.vercel.app/anime',
-  'og:title': 'Free Anime HD - Watch Anime HD Online on Sora',
-  'og:image': 'https://sora-anime.vercel.app/api/ogimage?it=anime',
-  'og:description':
-    'Watch latest anime online in HD Quality. Unlimited streaming anime for free now',
-});
+export const meta = mergeMeta(() => [
+  {
+    name: 'keywords',
+    content:
+      'watch free anime, free anime to watch online, watch anime online free, free anime streaming, free anime full, free anime download, watch anime hd, anime to watch, hd anime, stream anime, anime to stream, watch anime free',
+  },
+  { property: 'og:image', content: 'https://sorachill.vercel.app/api/ogimage?it=anime' },
+  { name: 'twitter:image', content: 'https://sorachill.vercel.app/api/ogimage?it=anime' },
+]);
 
-export const handle = {
-  breadcrumb: () => (
-    <NavLink to="/anime" aria-label="Anime Page">
-      {({ isActive }) => (
-        <Badge
-          color="primary"
-          variant="flat"
-          css={{
-            opacity: isActive ? 1 : 0.7,
-            transition: 'opacity 0.25s ease 0s',
-            '&:hover': { opacity: 0.8 },
-          }}
-        >
-          Anime
-        </Badge>
-      )}
-    </NavLink>
+export const handle: Handle = {
+  breadcrumb: ({ t }) => (
+    <BreadcrumbItem to="/anime" key="anime-index">
+      {t('anime')}
+    </BreadcrumbItem>
   ),
   showTabLink: true,
   tabLinkPages: animePages,
@@ -44,10 +31,6 @@ export const handle = {
   },
 };
 
-const AnimeIndexPage = () => (
-  <Container fluid responsive={false} css={{ m: 0, p: 0 }}>
-    <Outlet />
-  </Container>
-);
+const AnimeIndexPage = () => <Outlet />;
 
 export default AnimeIndexPage;

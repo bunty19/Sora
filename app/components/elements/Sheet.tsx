@@ -1,200 +1,254 @@
-/* eslint-disable @typescript-eslint/indent */
-import React from 'react';
-import { Button, css, keyframes, styled, type CSS, type VariantProps } from '@nextui-org/react';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
+import * as React from 'react';
+import * as SheetPrimitive from '@radix-ui/react-dialog';
+import { cn } from '~/utils';
 import { motion, type PanInfo } from 'framer-motion';
+import { tv, type VariantProps } from 'tailwind-variants';
 
 import Close from '~/assets/icons/CloseIcon';
 
-const overlayStyles = css({
-  backgroundColor: 'rgba(0, 0, 0, .15)',
-});
+const Sheet = SheetPrimitive.Root;
 
-const Sheet = DialogPrimitive.Root;
-const SheetTrigger = DialogPrimitive.Trigger;
+const SheetTrigger = SheetPrimitive.Trigger;
 
-const fadeIn = keyframes({
-  from: { opacity: '0' },
-  to: { opacity: '1' },
-});
+const SheetPortal = ({ ...props }: SheetPrimitive.DialogPortalProps) => (
+  <SheetPrimitive.Portal {...props} />
+);
+SheetPortal.displayName = SheetPrimitive.Portal.displayName;
 
-const fadeOut = keyframes({
-  from: { opacity: '1' },
-  to: { opacity: '0' },
-});
+const SheetOverlay = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay>
+>(({ className, ...props }, ref) => (
+  <SheetPrimitive.Overlay
+    ref={ref}
+    className={cn(
+      'fixed inset-0 z-[9998] cursor-pointer bg-background/[0.6] backdrop-blur-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+      className,
+    )}
+    {...props}
+  />
+));
+SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
-const StyledOverlay = styled(DialogPrimitive.Overlay, overlayStyles, {
-  position: 'fixed',
-  top: 0,
-  right: 0,
-  bottom: 0,
-  left: 0,
-  zIndex: 9998,
-
-  '&[data-state="open"]': {
-    animation: `${fadeIn} 150ms cubic-bezier(0.22, 1, 0.36, 1)`,
-  },
-
-  '&[data-state="closed"]': {
-    animation: `${fadeOut} 150ms cubic-bezier(0.22, 1, 0.36, 1)`,
-  },
-});
-
-const slideIn = keyframes({
-  from: { transform: '$$transformValue' },
-  to: { transform: 'translate3d(0,0,0)' },
-});
-
-const slideOut = keyframes({
-  from: { transform: 'translate3d(0,0,0)' },
-  to: { transform: '$$transformValue' },
-});
-
-const StyledContent = styled(DialogPrimitive.Content, {
-  backgroundColor: '$backgroundContrast',
-  boxShadow: '$backgroundAlpha 0 0 38px -10px',
-  position: 'fixed',
-  top: 0,
-  bottom: 0,
-  width: 250,
-  zIndex: 9999,
-  padding: '$4',
-  outline: 'none',
-
-  // Among other things, prevents text alignment inconsistencies when dialog can't be centered in the viewport evenly.
-  // Affects animated and non-animated dialogs alike.
-  willChange: 'transform',
-
-  // '&:focus': {
-  //   outline: 'none',
-  // },
-
-  '&[data-state="open"]': {
-    animation: `${slideIn} 300ms cubic-bezier(0.22, 1, 0.36, 1)`,
-  },
-
-  '&[data-state="closed"]': {
-    animation: `${slideOut} 300ms cubic-bezier(0.22, 1, 0.36, 1)`,
-  },
-
+const sheetContentStyles = tv({
+  base: 'fixed inset-y-0 z-[9999] w-[250px] bg-content1 !p-1 shadow-large transition ease-in-out will-change-transform focus:outline-none data-[state=closed]:duration-300 data-[state=open]:duration-500 data-[state=open]:animate-in data-[state=closed]:animate-out sm:!p-6',
   variants: {
     side: {
-      top: {
-        $$transformValue: 'translate3d(0,-100%,0)',
-        width: '100%',
-        height: 'auto',
-        minHeight: 100,
-        bottom: 'auto',
-        borderBottomLeftRadius: '$lg',
-        borderBottomRightRadius: '$lg',
-        borderBottom: '1px solid $border',
-      },
-      right: {
-        $$transformValue: 'translate3d(100%,0,0)',
-        right: 0,
-        borderTopLeftRadius: '$lg',
-        borderBottomLeftRadius: '$lg',
-        borderLeft: '1px solid $border',
-      },
-      bottom: {
-        $$transformValue: 'translate3d(0,100%,0)',
-        width: '100%',
-        height: 'auto',
-        minHeight: 100,
-        bottom: 0,
-        top: 'auto',
-        borderTopLeftRadius: '$lg',
-        borderTopRightRadius: '$lg',
-        borderTop: '1px solid $border',
-      },
-      left: {
-        $$transformValue: 'translate3d(-100%,0,0)',
-        left: 0,
-        borderTopRightRadius: '$lg',
-        borderBottomRightRadius: '$lg',
-        borderRight: '1px solid $border',
-      },
+      top: 'bottom-auto w-full rounded-b-large data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top',
+      right:
+        'right-0 h-full rounded-l-large data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
+      bottom:
+        'bottom-0 top-auto w-full rounded-t-large data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom',
+      left: 'left-0 h-full rounded-r-large data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left',
+    },
+    size: {
+      content: '',
+      default: '',
+      sm: '',
+      lg: '',
+      xl: '',
+      full: '',
     },
   },
-
+  compoundVariants: [
+    {
+      side: ['top', 'bottom'],
+      size: 'content',
+      class: 'max-h-screen min-h-[150px]',
+    },
+    {
+      side: ['top', 'bottom'],
+      size: 'default',
+      class: 'h-1/3 min-h-[150px]',
+    },
+    {
+      side: ['top', 'bottom'],
+      size: 'sm',
+      class: 'h-1/4 min-h-[150px]',
+    },
+    {
+      side: ['top', 'bottom'],
+      size: 'lg',
+      class: 'h-1/2 min-h-[150px]',
+    },
+    {
+      side: ['top', 'bottom'],
+      size: 'xl',
+      class: 'h-5/6 min-h-[150px]',
+    },
+    {
+      side: ['top', 'bottom'],
+      size: 'full',
+      class: 'h-screen',
+    },
+    {
+      side: ['right', 'left'],
+      size: 'content',
+      class: 'max-w-screen min-w-[250px]',
+    },
+    {
+      side: ['right', 'left'],
+      size: 'default',
+      class: 'w-1/3 min-w-[250px]',
+    },
+    {
+      side: ['right', 'left'],
+      size: 'sm',
+      class: 'w-1/4 min-w-[250px]',
+    },
+    {
+      side: ['right', 'left'],
+      size: 'lg',
+      class: 'w-1/2 min-w-[250px]',
+    },
+    {
+      side: ['right', 'left'],
+      size: 'xl',
+      class: 'w-5/6 min-w-[250px]',
+    },
+    {
+      side: ['right', 'left'],
+      size: 'full',
+      class: 'w-screen',
+    },
+  ],
   defaultVariants: {
     side: 'right',
+    size: 'default',
   },
 });
 
-const StyledCloseButton = styled(DialogPrimitive.Close, {
-  position: 'absolute',
-  top: '$2',
-  right: '$2',
-});
-
-const Handle = styled('div', {
-  width: '75px',
-  height: '4px',
-  backgroundColor: '$border',
-  borderRadius: '$sm',
-  margin: '1rem auto 0 !important',
-});
-
-type SheetContentVariants = VariantProps<typeof StyledContent>;
-type DialogContentPrimitiveProps = React.ComponentProps<typeof DialogPrimitive.Content>;
-type SheetContentProps = DialogContentPrimitiveProps &
-  SheetContentVariants & {
-    css?: CSS;
-    hideCloseButton?: boolean;
-    swipeDownToClose?: boolean;
-    open?: boolean;
-    onOpenChange?: () => void;
-    container?: HTMLElement;
+export interface SheetContentProps
+  extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
+    VariantProps<typeof sheetContentStyles> {
+  hideCloseButton?: boolean;
+  swipeDownToClose?: boolean;
+  open?: boolean;
+  onOpenChange?: () => void;
+  container?: HTMLElement;
+  classNames?: {
+    overlay?: string;
+    content?: string;
+    closeButton?: string;
   };
+}
 
-const SheetContent = React.forwardRef<React.ElementRef<typeof StyledContent>, SheetContentProps>(
+const SheetContent = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Content>,
+  SheetContentProps
+>(
   (
-    { children, hideCloseButton, swipeDownToClose, open, onOpenChange, container, ...props },
+    {
+      children,
+      hideCloseButton,
+      swipeDownToClose,
+      open,
+      onOpenChange,
+      container,
+      className,
+      classNames,
+      side,
+      size,
+      ...props
+    },
     forwardedRef,
   ) => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-      if (info.offset.y > 100 && open && onOpenChange && swipeDownToClose) {
+    const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+      if (info.offset.y > 100 && open && onOpenChange && swipeDownToClose && side === 'bottom') {
         onOpenChange();
       }
     };
     return (
-      <DialogPrimitive.Portal container={container}>
-        <StyledOverlay />
-        <StyledContent {...props} ref={forwardedRef} asChild>
+      <SheetPortal container={container}>
+        <SheetOverlay className={classNames?.overlay} />
+        <SheetPrimitive.Content
+          className={cn(
+            sheetContentStyles({ side, size }),
+            className ? className : classNames?.content,
+          )}
+          {...props}
+          ref={forwardedRef}
+          asChild
+        >
           <motion.div
-            drag={swipeDownToClose ? 'y' : false}
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.8 }}
+            drag={swipeDownToClose && side === 'bottom' ? 'y' : false}
+            dragDirectionLock
+            dragConstraints={{ top: 0, bottom: 300 }}
+            dragElastic={{ top: 0, bottom: 0.5 }}
             dragMomentum={false}
             onDragEnd={handleDragEnd}
+            dragTransition={{ bounceStiffness: 1000, bounceDamping: 50 }}
           >
-            {swipeDownToClose ? <Handle /> : null}
+            {swipeDownToClose && side === 'bottom' ? (
+              <div className="!m-[1rem_auto_0] h-1 w-[75px] rounded-small bg-default-foreground" />
+            ) : null}
             {!hideCloseButton ? (
-              <StyledCloseButton asChild>
-                <Button type="button" auto light icon={<Close />} />
-              </StyledCloseButton>
+              <SheetPrimitive.Close className="absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-small opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:ring-offset-2 disabled:pointer-events-none">
+                <Close className="h-4 w-4" />
+                <span className="sr-only">Close</span>
+              </SheetPrimitive.Close>
             ) : null}
             <motion.div
               drag="y"
               dragConstraints={{ top: 0, bottom: 0 }}
               dragElastic={0}
               dragMomentum={false}
+              className={swipeDownToClose && side === 'bottom' ? '!mt-2' : ''}
             >
               {children}
             </motion.div>
           </motion.div>
-        </StyledContent>
-      </DialogPrimitive.Portal>
+        </SheetPrimitive.Content>
+      </SheetPortal>
     );
   },
 );
 
 SheetContent.displayName = 'SheetContent';
 
-const SheetClose = DialogPrimitive.Close;
-const SheetTitle = DialogPrimitive.Title;
-const SheetDescription = DialogPrimitive.Description;
+const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div className={cn('flex flex-col gap-y-2 text-center sm:text-left', className)} {...props} />
+);
+SheetHeader.displayName = 'SheetHeader';
 
-export { Sheet, SheetTrigger, SheetContent, SheetClose, SheetTitle, SheetDescription };
+const SheetFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
+  <div
+    className={cn('flex flex-col-reverse gap-y-2 sm:flex-row sm:justify-end sm:gap-x-2', className)}
+    {...props}
+  />
+);
+SheetFooter.displayName = 'SheetFooter';
+
+const SheetTitle = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Title>,
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title>
+>(({ className, ...props }, ref) => (
+  <SheetPrimitive.Title
+    ref={ref}
+    className={cn('font-semibold text-default-foreground', className)}
+    {...props}
+  />
+));
+SheetTitle.displayName = SheetPrimitive.Title.displayName;
+
+const SheetDescription = React.forwardRef<
+  React.ElementRef<typeof SheetPrimitive.Description>,
+  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <SheetPrimitive.Description
+    ref={ref}
+    className={cn('text-muted-foreground text-sm', className)}
+    {...props}
+  />
+));
+SheetDescription.displayName = SheetPrimitive.Description.displayName;
+
+export {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetHeader,
+  SheetFooter,
+  SheetTitle,
+  SheetDescription,
+};
